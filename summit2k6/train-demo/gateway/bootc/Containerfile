@@ -28,6 +28,14 @@ RUN dnf install -y \
     firefox \
     && dnf clean all
 
+# Ken: NEED TO MAKE SURE TO MATCH THIS TO OCP REHM INSTALL > Install & Enable the Edge Manager Agent, disable (mask) the image mode update timer
+RUN dnf config-manager --add-repo https://rpm.flightctl.io/flightctl-lab.repo && \
+    dnf clean all && \
+    dnf -y install flightctl-agent-0:1.0.1-1.el9em.x86_64 && \
+
+# Copy early binding enrollment config.yaml into image
+COPY config.yaml /etc/flightctl/config.yaml
+
 # Create demo user
 RUN useradd -m demouser
 

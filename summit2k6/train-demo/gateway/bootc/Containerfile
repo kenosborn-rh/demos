@@ -37,13 +37,15 @@ RUN dnf config-manager --add-repo https://rpm.flightctl.io/flightctl-lab.repo &&
 # Copy early binding enrollment config
 COPY config.yaml /etc/flightctl/config.yaml
 
-# Create demo user (bootc uses /var/home)
+# Create demo user (bootc/ostree uses /var/home)
 RUN mkdir -p /var/home && \
     useradd -m -d /var/home/demouser -s /bin/bash demouser
 
-RUN mkdir -p /var/home/demouser && \
-    chown -R demouser:demouser /var/home/demouser && \
-    rm -rf /var/home/demouser/.mozilla || true
+# Ensure home and browser dirs exist and are owned correctly
+RUN mkdir -p /var/home/demouser/.mozilla \
+             /var/home/demouser/.cache \
+             /var/home/demouser/.config/systemd/user && \
+    chown -R demouser:demouser /var/home/demouser
 
 # Add demouser to wheel
 RUN usermod -aG wheel demouser
@@ -57,63 +59,60 @@ RUN echo "demouser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/demouser && \
 RUN echo "root:redhat123" | chpasswd && \
     passwd -u root
 
-# Preconfigure NetworkManager autoconnect for NIC
+# Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
 RUN mkdir -p /etc/NetworkManager/system-connections && \
-    printf "[connection]\nid=primary\ntype=ethernet\nautoconnect=true\nautoconnect-priority=100\n\n[ethernet]\nmac-address=58:47:CA:78:F2:58\n\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=auto\n" \
-    > /etc/NetworkManager/system-connections/primary.nmconnection && \
-    chmod 600 /etc/NetworkManager/system-connections/primary.nmconnection
+    printf "[connection]\nid=wired-demo\ntype=ethernet\nautoconnect=true\nautoconnect-priority=100\n\n[ethernet]\nmac-address=58:47:CA:78:F2:58\n\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=ignore\n" \
+    > /etc/NetworkManager/system-connections/wired-demo.nmconnection && \
+    chmod 600 /etc/NetworkManager/system-connections/wired-demo.nmconnection
 
 # Enable required services
-RUN systemctl enable cockpit.socket
-RUN systemctl enable NetworkManager
-RUN systemctl enable sshd
-RUN systemctl enable gdm
+RUN systemctl enable cockpit.socket && \
+    systemctl enable NetworkManager && \
+    systemctl enable sshd && \
+    systemctl enable gdm.service
 
-# Disable NM wait-online (can delay boot)
+# Disable NM wait-online delay/failure
 RUN systemctl disable NetworkManager-wait-online.service || true
 
 # Allow SSH through firewall
 RUN firewall-offline-cmd --add-service=ssh
 
-# Boot to graphical desktop
-RUN systemctl set-default graphical.target
+# Force graphical target reliably for bootc images
+RUN ln -sf /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target
 
-# Enable automatic login
+# Enable automatic login and disable GNOME initial setup
 RUN mkdir -p /etc/gdm && \
     printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=demouser\nInitialSetupEnable=False\n' > /etc/gdm/custom.conf
 
-# Disable screen lock and sleep
-RUN mkdir -p /etc/dconf/db/local.d /etc/dconf/db/local.d/locks && \
-    printf '[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/shell]\nstartup-mode="user"\n' \
+# Seed GNOME settings: no sleep, no lock, no overview, no welcome tour
+RUN mkdir -p /etc/dconf/profile /etc/dconf/db/local.d /etc/dconf/db/local.d/locks && \
+    printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user && \
+    printf "[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/shell]\nstartup-mode='user'\nwelcome-dialog-last-shown-version='999'\n" \
     > /etc/dconf/db/local.d/00-demo-settings && \
     printf '/org/gnome/desktop/session/idle-delay\n/org/gnome/desktop/screensaver/lock-enabled\n' \
     > /etc/dconf/db/local.d/locks/00-demo-settings && \
     dconf update
 
-# Disable GNOME welcome tour
+# Optional extra suppression of GNOME tour autostart
 RUN mkdir -p /etc/xdg/autostart && \
     printf '[Desktop Entry]\nHidden=true\n' > /etc/xdg/autostart/org.gnome.Tour.desktop
 
-# Create systemd user service directory
-RUN mkdir -p /var/home/demouser/.config/systemd/user
-
 # Demo browser service
-RUN printf '[Unit]\nDescription=Launch Demo Browser\nAfter=graphical-session.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/firefox --no-remote --kiosk http://127.0.0.1:6080\n\n[Install]\nWantedBy=default.target\n' \
+RUN printf '[Unit]\nDescription=Launch Demo Browser\nAfter=graphical-session.target\n\n[Service]\nType=simple\nEnvironment=HOME=/var/home/demouser\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nExecStart=/usr/bin/firefox --no-remote --kiosk http://127.0.0.1:6080\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n' \
 > /var/home/demouser/.config/systemd/user/demo-browser.service
 
 # Delay browser launch
 RUN printf '[Unit]\nDescription=Delay Demo Browser Launch\n\n[Timer]\nOnBootSec=5\nUnit=demo-browser.service\n\n[Install]\nWantedBy=timers.target\n' \
 > /var/home/demouser/.config/systemd/user/demo-browser.timer
 
-# Fix ownership
-RUN chown -R demouser:demouser /var/home/demouser/.config
-
-# Enable user timer
-RUN su - demouser -c "systemctl --user enable demo-browser.timer"
+# Enable user timer deterministically without requiring a live user systemd session
+RUN mkdir -p /var/home/demouser/.config/systemd/user/timers.target.wants && \
+    ln -sf ../demo-browser.timer /var/home/demouser/.config/systemd/user/timers.target.wants/demo-browser.timer && \
+    chown -R demouser:demouser /var/home/demouser/.config
 
 # Prevent OS auto-updates during conference
 RUN systemctl mask bootc-fetch-apply-updates.timer
 
 # Prevent container auto-updates
-RUN systemctl mask podman-auto-update.timer
-RUN systemctl mask podman-auto-update.service
+RUN systemctl mask podman-auto-update.timer && \
+    systemctl mask podman-auto-update.service

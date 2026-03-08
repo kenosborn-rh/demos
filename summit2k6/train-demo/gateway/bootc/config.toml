@@ -1,5 +1,5 @@
-[customizations.installer.kickstart]
-contents = """
+[customizations.installer]
+kickstart = """
 text --non-interactive
 zerombr
 clearpart --all --initlabel --disklabel=gpt --drives=nvme1n1

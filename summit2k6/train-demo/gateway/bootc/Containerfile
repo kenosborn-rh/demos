@@ -54,10 +54,21 @@ RUN mkdir -p /etc/dconf/db/local.d /etc/dconf/db/local.d/locks && \
     printf '/org/gnome/desktop/session/idle-delay\n/org/gnome/desktop/screensaver/lock-enabled\n' > /etc/dconf/db/local.d/locks/00-demo-settings && \
     dconf update
 
-# Auto-launch demo browser
-RUN mkdir -p /home/demouser/.config/autostart && \
-    printf '[Desktop Entry]\nType=Application\nName=Demo Browser\nExec=firefox --kiosk http://127.0.0.1:6080\nX-GNOME-Autostart-enabled=true\nTerminal=false\n' > /home/demouser/.config/autostart/demo-browser.desktop && \
-    chown -R demouser:demouser /home/demouser/.config
+# Create systemd user service to launch demo browser
+RUN mkdir -p /home/demouser/.config/systemd/user
+
+RUN printf '[Unit]\nDescription=Launch Demo Browser\nAfter=graphical-session.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/firefox --kiosk http://127.0.0.1:6080\n\n[Install]\nWantedBy=default.target\n' \
+> /home/demouser/.config/systemd/user/demo-browser.service
+
+# Timer to delay browser launch (so browser doesn't show app not available if inference container hasn't come online yet)
+RUN printf '[Unit]\nDescription=Delay Demo Browser Launch\n\n[Timer]\nOnBootSec=10\nUnit=demo-browser.service\n\n[Install]\nWantedBy=timers.target\n' \
+> /home/demouser/.config/systemd/user/demo-browser.timer
+
+# Fix ownership
+RUN chown -R demouser:demouser /home/demouser/.config
+
+# Enable the timer
+RUN su - demouser -c "systemctl --user enable demo-browser.timer"
 
 # Prevent OS auto-updates during the conference
 RUN systemctl mask bootc-fetch-apply-updates.timer

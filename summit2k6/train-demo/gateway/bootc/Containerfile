@@ -82,8 +82,9 @@ RUN systemctl disable NetworkManager-wait-online.service || true
 RUN firewall-offline-cmd --add-service=ssh && \
     firewall-offline-cmd --add-service=cockpit
 
-# Force graphical target reliably for bootc images
-RUN ln -sf /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target
+# Force graphical boot target (prevents installer reverting to multi-user.target)
+RUN rm -f /etc/systemd/system/default.target && \
+    ln -s /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target
 
 # Enable automatic login and disable GNOME initial setup
 RUN mkdir -p /etc/gdm && \

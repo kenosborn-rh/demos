@@ -1,0 +1,34 @@
+FROM registry.redhat.io/rhel9/rhel-bootc:9.7
+
+RUN dnf install -y \
+    podman \
+    cockpit \
+    cockpit-podman \
+    python3 \
+    python3-pip \
+    mosquitto-clients \
+    v4l-utils \
+    mesa-libGL \
+    libglvnd-glx \
+    iputils \
+    iproute \
+    bind-utils \
+    net-tools \
+    nmap-ncat \
+    tcpdump \
+    git \
+    vim \
+    jq \
+    htop \
+    tmux \
+    && dnf clean all
+
+# Enable Cockpit web console
+RUN systemctl enable cockpit.socket
+
+# Prevent OS auto-updates during the conference
+RUN systemctl mask bootc-fetch-apply-updates.timer
+
+# Prevent container auto-updates
+RUN systemctl mask podman-auto-update.timer
+RUN systemctl mask podman-auto-update.service

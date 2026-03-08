@@ -33,7 +33,7 @@ RUN useradd -m demouser
 # Add demouser to wheel group
 RUN usermod -aG wheel demouser
 
-# Passwordless sudo for demo user
+# Passwordless sudo
 RUN echo "demouser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/demouser && \
     chmod 0440 /etc/sudoers.d/demouser
 
@@ -48,9 +48,9 @@ RUN systemctl set-default graphical.target
 RUN mkdir -p /etc/gdm && \
     printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=demouser\n' > /etc/gdm/custom.conf
 
-# Prevent display sleep / lock
+# Prevent screen sleep / lock and disable Activities overview
 RUN mkdir -p /etc/dconf/db/local.d /etc/dconf/db/local.d/locks && \
-    printf '[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/screensaver]\nlock-enabled=false\n' > /etc/dconf/db/local.d/00-demo-settings && \
+    printf '[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/shell]\nstartup-mode=\"user\"\n' > /etc/dconf/db/local.d/00-demo-settings && \
     printf '/org/gnome/desktop/session/idle-delay\n/org/gnome/desktop/screensaver/lock-enabled\n' > /etc/dconf/db/local.d/locks/00-demo-settings && \
     dconf update
 

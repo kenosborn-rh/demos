@@ -1,9 +1,12 @@
 FROM registry.redhat.io/rhel9/rhel-bootc:9.7
 
 RUN dnf install -y \
+    @workstation-product-environment \
     podman \
     cockpit \
     cockpit-podman \
+    firewalld \
+    sudo \
     python3 \
     python3-pip \
     mosquitto-clients \
@@ -21,10 +24,40 @@ RUN dnf install -y \
     jq \
     htop \
     tmux \
+    firefox \
     && dnf clean all
 
-# Enable Cockpit web console
+# Create demo user
+RUN useradd -m demouser
+
+# Add demouser to wheel group
+RUN usermod -aG wheel demouser
+
+# Passwordless sudo for demo user
+RUN echo "demouser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/demouser && \
+    chmod 0440 /etc/sudoers.d/demouser
+
+# Enable required services
 RUN systemctl enable cockpit.socket
+RUN systemctl enable NetworkManager
+
+# Boot to graphical desktop
+RUN systemctl set-default graphical.target
+
+# Enable automatic login
+RUN mkdir -p /etc/gdm && \
+    printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=demouser\n' > /etc/gdm/custom.conf
+
+# Prevent display sleep / lock
+RUN mkdir -p /etc/dconf/db/local.d /etc/dconf/db/local.d/locks && \
+    printf '[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/screensaver]\nlock-enabled=false\n' > /etc/dconf/db/local.d/00-demo-settings && \
+    printf '/org/gnome/desktop/session/idle-delay\n/org/gnome/desktop/screensaver/lock-enabled\n' > /etc/dconf/db/local.d/locks/00-demo-settings && \
+    dconf update
+
+# Auto-launch demo browser
+RUN mkdir -p /home/demouser/.config/autostart && \
+    printf '[Desktop Entry]\nType=Application\nName=Demo Browser\nExec=firefox --kiosk http://127.0.0.1:6080\nX-GNOME-Autostart-enabled=true\nTerminal=false\n' > /home/demouser/.config/autostart/demo-browser.desktop && \
+    chown -R demouser:demouser /home/demouser/.config
 
 # Prevent OS auto-updates during the conference
 RUN systemctl mask bootc-fetch-apply-updates.timer

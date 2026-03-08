@@ -116,7 +116,7 @@ RUN mkdir -p /var/home/demouser/.config/systemd/user/timers.target.wants && \
     chown -R demouser:demouser /var/home/demouser/.config
 
 # First-boot RHSM registration
-RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org=\"YOUR_ORG_ID\" --activationkey=\"YOUR_ACTIVATION_KEY\"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \
+RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org=\"11009103\" --activationkey=\"kosborn-activation-key-rhel9\"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \
     > /usr/local/bin/register-rhsm.sh && \
     chmod 700 /usr/local/bin/register-rhsm.sh
 

@@ -1,7 +1,11 @@
 FROM registry.redhat.io/rhel9/rhel-bootc:9.7
 
 RUN dnf install -y \
-    @workstation-product-environment \
+    gdm \
+    gnome-shell \
+    gnome-session \
+    gnome-terminal \
+    firefox \
     podman \
     cockpit \
     cockpit-podman \
@@ -22,7 +26,6 @@ RUN dnf install -y \
     vim \
     jq \
     tmux \
-    firefox \
     && dnf clean all
 
 # Ken: NEED TO MAKE SURE TO MATCH THIS TO OCP REHM INSTALL > Install & Enable the Edge Manager Agent, disable (mask) the image mode update timer
@@ -53,9 +56,6 @@ RUN echo "root:redhat123" | chpasswd && \
 RUN systemctl enable cockpit.socket
 RUN systemctl enable NetworkManager
 RUN systemctl enable sshd
-
-# Allow SSH through firewall
-RUN firewall-offline-cmd --add-service=ssh
 
 # Boot to graphical desktop
 RUN systemctl set-default graphical.target

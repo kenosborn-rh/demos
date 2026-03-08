@@ -38,7 +38,8 @@ RUN dnf config-manager --add-repo https://rpm.flightctl.io/flightctl-lab.repo &&
 COPY config.yaml /etc/flightctl/config.yaml
 
 # Create demo user with explicit home
-RUN useradd -m -d /home/demouser -s /bin/bash demouser
+RUN mkdir -p /home && \
+    useradd -m -d /home/demouser -s /bin/bash demouser
 
 # Ensure home exists and is owned correctly
 RUN mkdir -p /home/demouser && \

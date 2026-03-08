@@ -27,6 +27,9 @@ RUN dnf install -y \
     firefox \
     && dnf clean all
 
+# DO NOT DO THIS IN PRODUCTION ENVIRONMENTS (for demo troubleshooting only)
+RUN echo "root:redhat123" | chpasswd
+
 # Create demo user
 RUN useradd -m demouser
 

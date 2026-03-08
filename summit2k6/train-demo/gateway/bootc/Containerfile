@@ -41,26 +41,10 @@ RUN dnf config-manager --add-repo https://rpm.flightctl.io/flightctl-lab.repo &&
 # Copy early binding enrollment config
 COPY config.yaml /etc/flightctl/config.yaml
 
-# Create demo user (bootc/ostree uses /var/home)
-RUN mkdir -p /var/home && \
-    useradd -m -d /var/home/demouser -s /bin/bash demouser
-
-# Ensure home and browser dirs exist and are owned correctly
-RUN mkdir -p /var/home/demouser/.mozilla \
-             /var/home/demouser/.cache \
-             /var/home/demouser/.config/systemd/user && \
-    chown -R demouser:demouser /var/home/demouser
-
-# Add demouser to wheel
-RUN usermod -aG wheel demouser
-
-# Passwordless sudo
-RUN echo "demouser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/demouser && \
-    chmod 0440 /etc/sudoers.d/demouser
-
-# Root password for troubleshooting
+# Set demo passwords
 # DO NOT DO THIS IN PRODUCTION
-RUN echo "root:redhat123" | chpasswd && \
+RUN echo "demouser:redhat123" | chpasswd && \
+    echo "root:redhat123" | chpasswd && \
     passwd -u root
 
 # Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
@@ -73,6 +57,7 @@ RUN mkdir -p /etc/NetworkManager/system-connections && \
 RUN systemctl enable cockpit.socket && \
     systemctl enable NetworkManager && \
     systemctl enable sshd && \
+    systemctl enable firewalld && \
     systemctl enable gdm.service
 
 # Disable NM wait-online delay/failure
@@ -81,14 +66,6 @@ RUN systemctl disable NetworkManager-wait-online.service || true
 # Allow SSH and Cockpit through firewall
 RUN firewall-offline-cmd --add-service=ssh && \
     firewall-offline-cmd --add-service=cockpit
-
-# Force graphical boot target (prevents installer reverting to multi-user.target)
-RUN rm -f /etc/systemd/system/default.target && \
-    ln -s /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target
-
-# Enable automatic login and disable GNOME initial setup
-RUN mkdir -p /etc/gdm && \
-    printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=demouser\nInitialSetupEnable=False\n' > /etc/gdm/custom.conf
 
 # Seed GNOME settings: no sleep, no lock, no overview, no welcome tour
 RUN mkdir -p /etc/dconf/profile /etc/dconf/db/local.d /etc/dconf/db/local.d/locks && \
@@ -102,19 +79,6 @@ RUN mkdir -p /etc/dconf/profile /etc/dconf/db/local.d /etc/dconf/db/local.d/lock
 # Optional extra suppression of GNOME tour autostart
 RUN mkdir -p /etc/xdg/autostart && \
     printf '[Desktop Entry]\nHidden=true\n' > /etc/xdg/autostart/org.gnome.Tour.desktop
-
-# Demo browser service
-RUN printf '[Unit]\nDescription=Launch Demo Browser\nAfter=graphical-session.target\n\n[Service]\nType=simple\nEnvironment=HOME=/var/home/demouser\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nExecStart=/usr/bin/firefox --no-remote --kiosk http://127.0.0.1:6080\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n' \
-> /var/home/demouser/.config/systemd/user/demo-browser.service
-
-# Delay browser launch
-RUN printf '[Unit]\nDescription=Delay Demo Browser Launch\n\n[Timer]\nOnBootSec=5\nUnit=demo-browser.service\n\n[Install]\nWantedBy=timers.target\n' \
-> /var/home/demouser/.config/systemd/user/demo-browser.timer
-
-# Enable user timer deterministically
-RUN mkdir -p /var/home/demouser/.config/systemd/user/timers.target.wants && \
-    ln -sf ../demo-browser.timer /var/home/demouser/.config/systemd/user/timers.target.wants/demo-browser.timer && \
-    chown -R demouser:demouser /var/home/demouser/.config
 
 # First-boot RHSM registration
 RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org=\"11009103\" --activationkey=\"kosborn-activation-key-rhel9\"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \

@@ -72,7 +72,7 @@ RUN printf '[Unit]\nDescription=Launch Demo Browser\nAfter=graphical-session.tar
 > /home/demouser/.config/systemd/user/demo-browser.service
 
 # Timer to delay browser launch
-RUN printf '[Unit]\nDescription=Delay Demo Browser Launch\n\n[Timer]\nOnBootSec=10\nUnit=demo-browser.service\n\n[Install]\nWantedBy=timers.target\n' \
+RUN printf '[Unit]\nDescription=Delay Demo Browser Launch\n\n[Timer]\nOnBootSec=5\nUnit=demo-browser.service\n\n[Install]\nWantedBy=timers.target\n' \
 > /home/demouser/.config/systemd/user/demo-browser.timer
 
 # Fix ownership so user services work
@@ -84,6 +84,6 @@ RUN su - demouser -c "systemctl --user enable demo-browser.timer"
 # Prevent OS auto-updates during the conference
 RUN systemctl mask bootc-fetch-apply-updates.timer
 
-# Prevent container auto-updates
+# Prevent container auto-updates during the conference
 RUN systemctl mask podman-auto-update.timer
 RUN systemctl mask podman-auto-update.service

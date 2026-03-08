@@ -28,6 +28,10 @@ RUN dnf install -y \
     tmux \
     && dnf clean all
 
+# Hide desktop RHSM nag but keep subscription-manager available
+RUN dnf remove -y subscription-manager-plugin-gnome || true && \
+    dnf clean all
+
 # Install Edge Manager agent
 RUN dnf config-manager --add-repo https://rpm.flightctl.io/flightctl-lab.repo && \
     dnf clean all && \
@@ -61,7 +65,7 @@ RUN echo "root:redhat123" | chpasswd && \
 
 # Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
 RUN mkdir -p /etc/NetworkManager/system-connections && \
-    printf "[connection]\nid=wired-demo\ntype=ethernet\nautoconnect=true\nautoconnect-priority=100\n\n[ethernet]\nmac-address=58:47:CA:78:F2:58\n\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=ignore\n" \
+    printf "[connection]\nid=wired-demo\ntype=ethernet\nautoconnect=true\nautoconnect-priority=100\nautoconnect-retries=-1\n\n[ethernet]\nmac-address=58:47:CA:78:F2:58\n\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=ignore\n" \
     > /etc/NetworkManager/system-connections/wired-demo.nmconnection && \
     chmod 600 /etc/NetworkManager/system-connections/wired-demo.nmconnection
 
@@ -74,8 +78,9 @@ RUN systemctl enable cockpit.socket && \
 # Disable NM wait-online delay/failure
 RUN systemctl disable NetworkManager-wait-online.service || true
 
-# Allow SSH through firewall
-RUN firewall-offline-cmd --add-service=ssh
+# Allow SSH and Cockpit through firewall
+RUN firewall-offline-cmd --add-service=ssh && \
+    firewall-offline-cmd --add-service=cockpit
 
 # Force graphical target reliably for bootc images
 RUN ln -sf /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target
@@ -105,10 +110,19 @@ RUN printf '[Unit]\nDescription=Launch Demo Browser\nAfter=graphical-session.tar
 RUN printf '[Unit]\nDescription=Delay Demo Browser Launch\n\n[Timer]\nOnBootSec=5\nUnit=demo-browser.service\n\n[Install]\nWantedBy=timers.target\n' \
 > /var/home/demouser/.config/systemd/user/demo-browser.timer
 
-# Enable user timer deterministically without requiring a live user systemd session
+# Enable user timer deterministically
 RUN mkdir -p /var/home/demouser/.config/systemd/user/timers.target.wants && \
     ln -sf ../demo-browser.timer /var/home/demouser/.config/systemd/user/timers.target.wants/demo-browser.timer && \
     chown -R demouser:demouser /var/home/demouser/.config
+
+# First-boot RHSM registration
+RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org=\"YOUR_ORG_ID\" --activationkey=\"YOUR_ACTIVATION_KEY\"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \
+    > /usr/local/bin/register-rhsm.sh && \
+    chmod 700 /usr/local/bin/register-rhsm.sh
+
+RUN printf '[Unit]\nDescription=Register with Red Hat Subscription Management\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/register-rhsm.sh\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n' \
+    > /etc/systemd/system/register-rhsm.service && \
+    systemctl enable register-rhsm.service
 
 # Prevent OS auto-updates during conference
 RUN systemctl mask bootc-fetch-apply-updates.timer

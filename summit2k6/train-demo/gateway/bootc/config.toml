@@ -1,7 +1,8 @@
-[customizations.installer]
-kickstart = """
+[customizations.installer.kickstart]
+contents = """
 text --non-interactive
 zerombr
+
 clearpart --all --initlabel --disklabel=gpt --drives=nvme1n1
 ignoredisk --only-use=nvme1n1
 

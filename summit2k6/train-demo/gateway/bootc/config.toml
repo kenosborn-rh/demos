@@ -1,0 +1,17 @@
+[customizations.installer.kickstart]
+contents = """
+text --non-interactive
+zerombr
+clearpart --all --initlabel --disklabel=gpt --drives=nvme1n1
+ignoredisk --only-use=nvme1n1
+
+part /boot/efi --fstype=efi --ondisk=nvme1n1 --size=600
+part /boot     --fstype=xfs --ondisk=nvme1n1 --size=1024
+part /         --fstype=xfs --ondisk=nvme1n1 --size=25600
+part /var      --fstype=xfs --ondisk=nvme1n1 --grow --size=1
+
+network --bootproto=dhcp --device=link --activate --onboot=on
+services --enabled=NetworkManager
+
+reboot
+"""

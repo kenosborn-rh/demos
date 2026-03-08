@@ -1,0 +1,114 @@
+import json
+import time
+import numpy as np
+import cv2
+import onnxruntime as ort
+
+
+MODEL_PATH = "out/placards.onnx"
+LABELS_PATH = "out/labels.json"
+
+# Try these values first; 720p is usually plenty and more stable than 1080p for CPU inference.
+CAM_INDEX = 0
+CAM_W, CAM_H = 1280, 720
+
+# Model input
+IN_W, IN_H = 224, 224
+
+# Display / logging
+PRINT_EVERY_SEC = 0.25  # don't spam terminal
+SHOW_WINDOW = True
+
+
+def softmax(x):
+    e = np.exp(x - np.max(x))
+    return e / e.sum()
+
+
+def preprocess_bgr(frame_bgr):
+    # center-crop to square then resize -> helps when camera aspect ratio isn't square
+    h, w = frame_bgr.shape[:2]
+    side = min(h, w)
+    y0 = (h - side) // 2
+    x0 = (w - side) // 2
+    crop = frame_bgr[y0:y0+side, x0:x0+side]
+
+    rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    rgb = cv2.resize(rgb, (IN_W, IN_H), interpolation=cv2.INTER_AREA)
+
+    x = rgb.astype(np.float32) / 255.0
+    x = np.transpose(x, (2, 0, 1))  # HWC->CHW
+    x = np.expand_dims(x, axis=0)   # batch
+    return x
+
+
+def main():
+    with open(LABELS_PATH) as f:
+        labels = json.load(f)
+
+    sess = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
+    input_name = sess.get_inputs()[0].name
+
+    cap = cv2.VideoCapture(CAM_INDEX)
+    if not cap.isOpened():
+        raise SystemExit("Could not open webcam. Try changing CAM_INDEX (0/1).")
+
+    # Request resolution (some webcams ignore this; it's fine)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAM_H)
+
+    last_print = 0.0
+    fps_t0 = time.time()
+    fps_frames = 0
+    fps_val = 0.0
+
+    print("Starting webcam inference. Press 'q' in the window to quit.")
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            print("Failed to read frame from webcam.")
+            break
+
+        x = preprocess_bgr(frame)
+        logits = sess.run(None, {input_name: x})[0][0]
+        probs = softmax(logits)
+        idx = int(np.argmax(probs))
+        label = labels[idx]
+        conf = float(probs[idx])
+
+        # FPS estimate
+        fps_frames += 1
+        if fps_frames >= 15:
+            dt = time.time() - fps_t0
+            fps_val = fps_frames / max(dt, 1e-6)
+            fps_t0 = time.time()
+            fps_frames = 0
+
+        now = time.time()
+        if now - last_print >= PRINT_EVERY_SEC:
+            print(f"{label:8s}  conf={conf:.3f}  fps~{fps_val:.1f}")
+            last_print = now
+
+        if SHOW_WINDOW:
+            overlay = frame.copy()
+            cv2.putText(
+                overlay,
+                f"{label}  {conf:.3f}  fps~{fps_val:.1f}",
+                (20, 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.2,
+                (255, 255, 255),
+                3,
+                cv2.LINE_AA
+            )
+            cv2.imshow("Placard inference (q to quit)", overlay)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+
+    cap.release()
+    if SHOW_WINDOW:
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()

@@ -48,9 +48,10 @@ RUN useradd -m -s /bin/bash -G wheel demouser && \
     echo "demouser:redhat123" | chpasswd && \
     echo "root:redhat123" | chpasswd && \
     passwd -u root && \
-    mkdir -p /var/home/demouser && \
-    chown demouser:demouser /var/home/demouser && \
-    usermod -d /var/home/demouser demouser
+    usermod -d /var/home/demouser demouser && \
+    mkdir -p /usr/lib/tmpfiles.d && \
+    printf 'd /var/home/demouser 0700 demouser demouser -\n' \
+    > /usr/lib/tmpfiles.d/demouser-home.conf
 
 # Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
 RUN mkdir -p /etc/NetworkManager/system-connections && \
@@ -59,7 +60,8 @@ RUN mkdir -p /etc/NetworkManager/system-connections && \
     chmod 600 /etc/NetworkManager/system-connections/wired-demo.nmconnection
 
 # Set graphical boot target and configure GDM autologin
-RUN systemctl set-default graphical.target && \
+RUN rm -f /etc/systemd/system/default.target && \
+    ln -s /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target && \
     mkdir -p /etc/gdm && \
     printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=demouser\nWaylandEnable=false\n\n[security]\n\n[xdmcp]\n\n[chooser]\n\n[debug]\n' \
     > /etc/gdm/custom.conf

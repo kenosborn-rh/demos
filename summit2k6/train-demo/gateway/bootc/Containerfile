@@ -4,6 +4,7 @@ RUN dnf install -y \
     gdm \
     gnome-shell \
     gnome-session \
+    gnome-session-xsession \
     gnome-terminal \
     firefox \
     podman \
@@ -26,6 +27,7 @@ RUN dnf install -y \
     vim \
     jq \
     tmux \
+    xorg-x11-server-Xorg \
     && dnf clean all
 
 # Hide desktop RHSM nag but keep subscription-manager available
@@ -45,7 +47,10 @@ COPY config.yaml /etc/flightctl/config.yaml
 RUN useradd -m -s /bin/bash -G wheel demouser && \
     echo "demouser:redhat123" | chpasswd && \
     echo "root:redhat123" | chpasswd && \
-    passwd -u root
+    passwd -u root && \
+    mkdir -p /var/home/demouser && \
+    chown demouser:demouser /var/home/demouser && \
+    usermod -d /var/home/demouser demouser
 
 # Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
 RUN mkdir -p /etc/NetworkManager/system-connections && \

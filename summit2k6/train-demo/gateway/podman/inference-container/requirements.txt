@@ -1,0 +1,8 @@
+# MS-01 inference container — Python dependencies
+# opencv-python (full, NOT headless) — required for cv2.imshow() on GNOME desktop
+# PyTorch is NOT included — inference uses ONNX Runtime only
+
+onnxruntime==1.18.1
+opencv-python==4.10.0.84
+numpy==1.26.4
+paho-mqtt==2.1.0

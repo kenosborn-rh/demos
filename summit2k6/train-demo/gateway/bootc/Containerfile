@@ -55,7 +55,9 @@ RUN mkdir -p /etc/NetworkManager/system-connections && \
     chmod 600 /etc/NetworkManager/system-connections/wired-demo.nmconnection
 
 # Set graphical boot target and configure GDM autologin
-RUN rm -f /usr/lib/systemd/system/default.target && \
+RUN rm -f /etc/systemd/system/default.target && \
+    rm -f /usr/lib/systemd/system/default.target && \
+    ln -s /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target && \
     ln -s /usr/lib/systemd/system/graphical.target /usr/lib/systemd/system/default.target && \
     mkdir -p /etc/gdm && \
     printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=demouser\nWaylandEnable=false\n\n[security]\n\n[xdmcp]\n\n[chooser]\n\n[debug]\n' \

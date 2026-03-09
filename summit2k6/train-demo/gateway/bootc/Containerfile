@@ -48,7 +48,24 @@ RUN useradd -m -s /bin/bash -G wheel demouser && \
     printf 'd /var/home/demouser 0700 demouser demouser -\n' \
     > /usr/lib/tmpfiles.d/demouser-home.conf
 
-# Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
+# Add demouser to the video group so rootless Podman can pass/dev/video0 through to the inference container without --user root.
+RUN usermod -aG video demouser
+
+# Install SELinux policy module 
+RUN dnf install -y selinux-policy-devel checkpolicy policycoreutils && \
+    dnf clean all
+
+# Write, compile and install the policy module
+RUN mkdir -p /tmp/selinux-policy && \
+    printf 'module container_video 1.0;\n\nrequire {\n    type container_t;\n    type v4l_device_t;\n    class chr_file { read write getattr ioctl open };\n}\n\nallow container_t v4l_device_t:chr_file { read write getattr ioctl open };\n' \
+    > /tmp/selinux-policy/container_video.te && \
+    cd /tmp/selinux-policy && \
+    checkmodule -M -m -o container_video.mod container_video.te && \
+    semodule_package -o container_video.pp -m container_video.mod && \
+    semodule -i container_video.pp && \
+    rm -rf /tmp/selinux-policy
+
+# Preconfigure NetworkManager autoconnect for NIC, currently pinned by MAC (for Summit I'm guessing we change to static ip assignment)
 RUN mkdir -p /etc/NetworkManager/system-connections && \
     printf "[connection]\nid=wired-demo\ntype=ethernet\nautoconnect=true\nautoconnect-priority=100\nautoconnect-retries=-1\n\n[ethernet]\nmac-address=58:47:CA:78:F2:58\n\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=ignore\n" \
     > /etc/NetworkManager/system-connections/wired-demo.nmconnection && \
@@ -90,7 +107,7 @@ RUN systemctl disable NetworkManager-wait-online.service || true
 RUN firewall-offline-cmd --add-service=ssh && \
     firewall-offline-cmd --add-service=cockpit
 
-# First-boot RHSM registration
+# First-boot RHSM registration (currently using my activation key)
 RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org="11009103" --activationkey="kosborn-activation-key-rhel9"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \
     > /usr/local/bin/register-rhsm.sh && \
     chmod 700 /usr/local/bin/register-rhsm.sh

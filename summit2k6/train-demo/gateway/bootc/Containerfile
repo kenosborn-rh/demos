@@ -1,11 +1,9 @@
 FROM registry.redhat.io/rhel9/rhel-bootc:9.7
 
 RUN dnf install -y \
+    @base-x \
+    @gnome-desktop \
     gdm \
-    gnome-shell \
-    gnome-session \
-    gnome-session-xsession \
-    gnome-terminal \
     firefox \
     podman \
     cockpit \
@@ -15,8 +13,6 @@ RUN dnf install -y \
     openssh-server \
     python3 \
     python3-pip \
-    mesa-libGL \
-    libglvnd-glx \
     iputils \
     iproute \
     bind-utils \
@@ -27,7 +23,6 @@ RUN dnf install -y \
     vim \
     jq \
     tmux \
-    xorg-x11-server-Xorg \
     && dnf clean all
 
 # Hide desktop RHSM nag but keep subscription-manager available
@@ -60,8 +55,8 @@ RUN mkdir -p /etc/NetworkManager/system-connections && \
     chmod 600 /etc/NetworkManager/system-connections/wired-demo.nmconnection
 
 # Set graphical boot target and configure GDM autologin
-RUN rm -f /etc/systemd/system/default.target && \
-    ln -s /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target && \
+RUN rm -f /usr/lib/systemd/system/default.target && \
+    ln -s /usr/lib/systemd/system/graphical.target /usr/lib/systemd/system/default.target && \
     mkdir -p /etc/gdm && \
     printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=demouser\nWaylandEnable=false\n\n[security]\n\n[xdmcp]\n\n[chooser]\n\n[debug]\n' \
     > /etc/gdm/custom.conf
@@ -97,6 +92,7 @@ RUN firewall-offline-cmd --add-service=ssh && \
 RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org="11009103" --activationkey="kosborn-activation-key-rhel9"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \
     > /usr/local/bin/register-rhsm.sh && \
     chmod 700 /usr/local/bin/register-rhsm.sh
+
 RUN printf '[Unit]\nDescription=Register with Red Hat Subscription Management\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/register-rhsm.sh\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n' \
     > /etc/systemd/system/register-rhsm.service && \
     systemctl enable register-rhsm.service

@@ -1,0 +1,84 @@
+# Edge AI Inference Container – Placard Vision System
+# Base: UBI9 Python 3.11 (Red Hat Universal Base Image)
+# Target: MS-01 edge compute device running RHEL 9 Image Mode (bootc)
+# Runtime: Podman (rootless) under GNOME desktop session
+# Managed by: Red Hat Edge Manager (RHEM) via Quadlet systemd unit (TODO)
+#
+# Display: GNOME desktop is running on the MS-01 with a physical monitor.
+# cv2.imshow() works via the user's $DISPLAY — pass it at runtime with -e DISPLAY.
+
+FROM registry.access.redhat.com/ubi9/python-311
+
+# ── Metadata ──────────────────────────────────────────────────────────────────
+LABEL name="placard-inference" \
+      version="1.0" \
+      description="Edge AI placard classification using ONNX Runtime and OpenCV" \
+      org.opencontainers.image.source="https://github.com/your-org/edge-ai-train-demo"
+
+# ── System dependencies ───────────────────────────────────────────────────────
+# Full OpenCV (not headless) is used to support cv2.imshow() on the GNOME desktop.
+# mesa-libGL    — required by cv2 even in non-GPU use
+# glib2         — required by OpenCV threading
+# libXext       — required for X11 display output (cv2.imshow)
+# libSM         — X11 session management, needed by OpenCV window
+USER root
+RUN dnf install -y --nodocs \
+        mesa-libGL \
+        glib2 \
+        libXext \
+        libSM \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+# ── App directory ─────────────────────────────────────────────────────────────
+WORKDIR /app
+
+# ── Python dependencies ───────────────────────────────────────────────────────
+# opencv-python (full) — NOT headless — required for cv2.imshow()
+# No PyTorch — inference uses ONNX Runtime only
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ── Application code ──────────────────────────────────────────────────────────
+COPY inference.py .
+
+# ── Model artifacts ───────────────────────────────────────────────────────────
+# labels.json is a JSON array — NOT classes.txt plain text
+COPY models/placards.onnx models/placards.onnx
+COPY models/labels.json    models/labels.json
+
+# ── Runtime configuration ─────────────────────────────────────────────────────
+# SHOW_WINDOW=true — MS-01 has GNOME + physical monitor
+# DISPLAY is intentionally NOT set here — it must be passed at runtime
+# via -e DISPLAY=$DISPLAY so it picks up the correct X11 socket for the
+# logged-in GNOME session. See run instructions.
+ENV MODEL_PATH=/app/models/placards.onnx \
+    LABELS_PATH=/app/models/labels.json \
+    CAMERA_INDEX=0 \
+    CAM_W=1280 \
+    CAM_H=720 \
+    ARM_THRESHOLD=0.85 \
+    STABLE_FRAMES=3 \
+    COOLDOWN_SEC=1.0 \
+    USE_PAPER_GATE=true \
+    BRIGHT_THRESH=185 \
+    MIN_BRIGHT_FRAC=0.18 \
+    MAX_BRIGHT_FRAC=0.92 \
+    MIN_CENTER_BRIGHT=0.12 \
+    NONE_MAX_PROB=0.20 \
+    MARGIN_MIN=0.20 \
+    SHOW_WINDOW=true \
+    SHOW_DEBUG_ON_SCREEN=true \
+    SHOW_INSTRUCTIONS=true \
+    MQTT_ENABLED=false \
+    MQTT_BROKER=localhost \
+    MQTT_PORT=1883 \
+    MQTT_TOPIC=train/cmd \
+    DEVICE_ID=ms01-camera \
+    MODEL_VERSION=placards-v1
+
+# ── Run as non-root ───────────────────────────────────────────────────────────
+USER 1001
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+CMD ["python", "inference.py"]

@@ -48,10 +48,10 @@ RUN useradd -m -s /bin/bash -G wheel demouser && \
     printf 'd /var/home/demouser 0700 demouser demouser -\n' \
     > /usr/lib/tmpfiles.d/demouser-home.conf
 
-# Add demouser to the video group so rootless Podman can pass/dev/video0 through to the inference container without --user root.
+# Add demouser to the video group so rootless Podman can pass /dev/video0 through to the inference container without --user root
 RUN usermod -aG video demouser
 
-# Install SELinux policy module 
+# Install SELinux policy module
 RUN dnf install -y selinux-policy-devel checkpolicy policycoreutils && \
     dnf clean all
 
@@ -65,17 +65,15 @@ RUN mkdir -p /tmp/selinux-policy && \
     semodule -i container_video.pp && \
     rm -rf /tmp/selinux-policy
 
-# Preconfigure NetworkManager autoconnect for NIC, currently pinned by MAC (for Summit I'm guessing we change to static ip assignment)
+# Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
 RUN mkdir -p /etc/NetworkManager/system-connections && \
     printf "[connection]\nid=wired-demo\ntype=ethernet\nautoconnect=true\nautoconnect-priority=100\nautoconnect-retries=-1\n\n[ethernet]\nmac-address=58:47:CA:78:F2:58\n\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=ignore\n" \
     > /etc/NetworkManager/system-connections/wired-demo.nmconnection && \
     chmod 600 /etc/NetworkManager/system-connections/wired-demo.nmconnection
 
-# Set graphical boot target and configure GDM autologin
-RUN rm -f /etc/systemd/system/default.target && \
-    rm -f /usr/lib/systemd/system/default.target && \
-    ln -s /usr/lib/systemd/system/graphical.target /etc/systemd/system/default.target && \
-    ln -s /usr/lib/systemd/system/graphical.target /usr/lib/systemd/system/default.target && \
+# Start GDM under multi-user.target since ostree controls default.target
+RUN mkdir -p /etc/systemd/system/multi-user.target.wants && \
+    ln -s /usr/lib/systemd/system/gdm.service /etc/systemd/system/multi-user.target.wants/gdm.service && \
     mkdir -p /etc/gdm && \
     printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=demouser\nWaylandEnable=false\n\n[security]\n\n[xdmcp]\n\n[chooser]\n\n[debug]\n' \
     > /etc/gdm/custom.conf
@@ -107,12 +105,12 @@ RUN systemctl disable NetworkManager-wait-online.service || true
 RUN firewall-offline-cmd --add-service=ssh && \
     firewall-offline-cmd --add-service=cockpit
 
-# First-boot RHSM registration (currently using my activation key)
+# First-boot RHSM registration
 RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org="11009103" --activationkey="kosborn-activation-key-rhel9"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \
     > /usr/local/bin/register-rhsm.sh && \
     chmod 700 /usr/local/bin/register-rhsm.sh
 
-RUN printf '[Unit]\nDescription=Register with Red Hat Subscription Management\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/register-rhsm.sh\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n' \
+RUN printf '[Unit]\nDescription=Register with Red Hat Subscription Management\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/register-rhsm.service\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n' \
     > /etc/systemd/system/register-rhsm.service && \
     systemctl enable register-rhsm.service
 

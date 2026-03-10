@@ -48,8 +48,11 @@ RUN useradd -m -s /bin/bash -G wheel demouser && \
     printf 'd /var/home/demouser 0700 demouser demouser -\n' \
     > /usr/lib/tmpfiles.d/demouser-home.conf
 
-# Add demouser to the video group so rootless Podman can pass /dev/video0 through to the inference container without --user root
-RUN usermod -aG video demouser
+# Add demouser to the video group so rootless Podman can pass /dev/video0
+# through to the inference container without --user root.
+# usermod -aG does not persist in bootc/ostree — use sysusers.d instead.
+RUN mkdir -p /usr/lib/sysusers.d && \
+    printf 'm demouser video\n' > /usr/lib/sysusers.d/demouser-video.conf
 
 # Install SELinux policy module
 RUN dnf install -y selinux-policy-devel checkpolicy policycoreutils && \
@@ -110,7 +113,7 @@ RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity
     > /usr/local/bin/register-rhsm.sh && \
     chmod 700 /usr/local/bin/register-rhsm.sh
 
-RUN printf '[Unit]\nDescription=Register with Red Hat Subscription Management\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/register-rhsm.service\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n' \
+RUN printf '[Unit]\nDescription=Register with Red Hat Subscription Management\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/register-rhsm.sh\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n' \
     > /etc/systemd/system/register-rhsm.service && \
     systemctl enable register-rhsm.service
 

@@ -1,0 +1,108 @@
+FROM registry.redhat.io/rhel9/rhel-bootc:9.7
+
+RUN dnf install -y \
+    @base-x \
+    @gnome-desktop \
+    gdm \
+    firefox \
+    podman \
+    cockpit \
+    cockpit-podman \
+    firewalld \
+    sudo \
+    openssh-server \
+    python3 \
+    python3-pip \
+    iputils \
+    iproute \
+    bind-utils \
+    net-tools \
+    nmap-ncat \
+    tcpdump \
+    git \
+    vim \
+    jq \
+    tmux \
+    && dnf clean all
+
+# Hide desktop RHSM nag but keep subscription-manager available
+RUN dnf remove -y subscription-manager-plugin-gnome || true && \
+    dnf clean all
+
+# Install Edge Manager agent
+RUN dnf config-manager --add-repo https://rpm.flightctl.io/flightctl-lab.repo && \
+    dnf clean all && \
+    dnf -y install flightctl-agent-0:1.1.0~main~118~g55455431.lab-1.el9.x86_64 && \
+    systemctl enable flightctl-agent.service
+
+# Copy early binding enrollment config
+COPY config.yaml /etc/flightctl/config.yaml
+
+# Create demouser and set passwords - for demo use only - do not do this in production
+RUN useradd -m -s /bin/bash -G wheel demouser && \
+    echo "demouser:redhat123" | chpasswd && \
+    echo "root:redhat123" | chpasswd && \
+    passwd -u root && \
+    usermod -d /var/home/demouser demouser && \
+    mkdir -p /usr/lib/tmpfiles.d && \
+    printf 'd /var/home/demouser 0700 demouser demouser -\n' \
+    > /usr/lib/tmpfiles.d/demouser-home.conf
+
+# Add demouser to video group for rootless Podman camera access
+RUN usermod -aG video demouser
+
+# Preconfigure NetworkManager autoconnect for NIC, pinned by MAC
+RUN mkdir -p /etc/NetworkManager/system-connections && \
+    printf "[connection]\nid=wired-demo\ntype=ethernet\nautoconnect=true\nautoconnect-priority=100\nautoconnect-retries=-1\n\n[ethernet]\nmac-address=58:47:CA:78:F2:58\n\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=ignore\n" \
+    > /etc/NetworkManager/system-connections/wired-demo.nmconnection && \
+    chmod 600 /etc/NetworkManager/system-connections/wired-demo.nmconnection
+
+# Start GDM under multi-user.target since ostree controls default.target
+RUN mkdir -p /etc/systemd/system/multi-user.target.wants && \
+    ln -s /usr/lib/systemd/system/gdm.service /etc/systemd/system/multi-user.target.wants/gdm.service && \
+    mkdir -p /etc/gdm && \
+    printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=demouser\nWaylandEnable=false\n\n[security]\n\n[xdmcp]\n\n[chooser]\n\n[debug]\n' \
+    > /etc/gdm/custom.conf
+
+# Seed GNOME settings: no sleep, no lock, no overview, no welcome tour
+RUN mkdir -p /etc/dconf/profile /etc/dconf/db/local.d /etc/dconf/db/local.d/locks && \
+    printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user && \
+    printf "[org/gnome/desktop/session]\nidle-delay=uint32 0\n\n[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/shell]\nstartup-mode='user'\nwelcome-dialog-last-shown-version='999'\n" \
+    > /etc/dconf/db/local.d/00-demo-settings && \
+    printf '/org/gnome/desktop/session/idle-delay\n/org/gnome/desktop/screensaver/lock-enabled\n' \
+    > /etc/dconf/db/local.d/locks/00-demo-settings && \
+    dconf update
+
+# Suppress GNOME Desktop tour autostart
+RUN mkdir -p /etc/xdg/autostart && \
+    printf '[Desktop Entry]\nHidden=true\n' > /etc/xdg/autostart/org.gnome.Tour.desktop
+
+# Enable required services
+RUN systemctl enable cockpit.socket && \
+    systemctl enable NetworkManager && \
+    systemctl enable sshd && \
+    systemctl enable firewalld && \
+    systemctl enable gdm.service
+
+# Disable NM wait-online delay/failure
+RUN systemctl disable NetworkManager-wait-online.service || true
+
+# Allow SSH and Cockpit through firewall
+RUN firewall-offline-cmd --add-service=ssh && \
+    firewall-offline-cmd --add-service=cockpit
+
+# First-boot RHSM registration
+RUN printf '#!/usr/bin/bash\nset -euo pipefail\nif subscription-manager identity >/dev/null 2>&1; then\n  exit 0\nfi\nsubscription-manager register --org="11009103" --activationkey="kosborn-activation-key-rhel9"\nsubscription-manager refresh || true\nsystemctl disable register-rhsm.service || true\n' \
+    > /usr/local/bin/register-rhsm.sh && \
+    chmod 700 /usr/local/bin/register-rhsm.sh
+
+RUN printf '[Unit]\nDescription=Register with Red Hat Subscription Management\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/register-rhsm.sh\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n' \
+    > /etc/systemd/system/register-rhsm.service && \
+    systemctl enable register-rhsm.service
+
+# Prevent OS auto-updates during conference
+RUN systemctl mask bootc-fetch-apply-updates.timer
+
+# Prevent container auto-updates
+RUN systemctl mask podman-auto-update.timer && \
+    systemctl mask podman-auto-update.service

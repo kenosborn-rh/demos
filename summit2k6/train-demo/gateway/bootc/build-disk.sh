@@ -1,5 +1,7 @@
 #!/bin/bash
 
+sudo rm -rf output && mkdir output
+
 sudo podman run --rm -it \
   --privileged \
   --pull=newer \

@@ -1,0 +1,79 @@
+# Edge AI Inference Container – Placard Vision System (Web Streaming Variant)
+# Base: UBI9 Python 3.11 (Red Hat Universal Base Image)
+# Target: MS-01 edge compute device running RHEL 9 Image Mode (bootc)
+# Managed by: Red Hat Edge Manager (RHEM) via Quadlet systemd unit
+#
+# This variant replaces cv2.imshow() with a Flask MJPEG web server on port 8080.
+# No X11/Wayland display dependency — stream is viewed in a browser.
+# inference.py (cv2.imshow variant) is preserved alongside for fallback.
+
+FROM registry.access.redhat.com/ubi9/python-311
+
+# ── Metadata ──────────────────────────────────────────────────────────────────
+LABEL name="placard-inference" \
+      version="2.0" \
+      description="Edge AI placard classification — web streaming variant" \
+      org.opencontainers.image.source="https://github.com/your-org/edge-ai-train-demo"
+
+# ── System dependencies ───────────────────────────────────────────────────────
+# mesa-libGL — required by cv2 even without a display
+# glib2      — required by OpenCV threading
+USER root
+RUN dnf install -y --nodocs \
+        mesa-libGL \
+        glib2 \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+# ── App directory ─────────────────────────────────────────────────────────────
+WORKDIR /app
+
+# ── Python dependencies ───────────────────────────────────────────────────────
+COPY requirements_web.txt .
+RUN pip install --no-cache-dir -r requirements_web.txt
+
+# ── Application code ──────────────────────────────────────────────────────────
+# Both scripts included — inference_web.py is the default entrypoint
+# inference.py preserved for fallback to cv2.imshow mode
+COPY inference_web.py .
+
+# ── Model artifacts ───────────────────────────────────────────────────────────
+COPY models/placards.onnx models/placards.onnx
+COPY models/labels.json    models/labels.json
+
+# ── Runtime configuration ─────────────────────────────────────────────────────
+# No DISPLAY needed — web streaming only
+ENV MODEL_PATH=/app/models/placards.onnx \
+    LABELS_PATH=/app/models/labels.json \
+    CAMERA_INDEX=0 \
+    CAM_W=640 \
+    CAM_H=480 \
+    DISPLAY_SIZE=800 \
+    WEB_PORT=8080 \
+    ARM_THRESHOLD=0.85 \
+    STABLE_FRAMES=3 \
+    COOLDOWN_SEC=1.0 \
+    USE_PAPER_GATE=false \
+    BRIGHT_THRESH=185 \
+    MIN_BRIGHT_FRAC=0.18 \
+    MAX_BRIGHT_FRAC=0.92 \
+    MIN_CENTER_BRIGHT=0.12 \
+    NONE_MAX_PROB=0.20 \
+    MARGIN_MIN=0.20 \
+    SHOW_DEBUG_ON_SCREEN=true \
+    MQTT_ENABLED=false \
+    MQTT_BROKER=localhost \
+    MQTT_PORT=1883 \
+    MQTT_TOPIC=train/cmd \
+    DEVICE_ID=ms01-camera \
+    MODEL_VERSION=placards-v1
+
+# ── Expose web port ───────────────────────────────────────────────────────────
+EXPOSE 8080
+
+# ── Run as non-root ───────────────────────────────────────────────────────────
+USER 1001
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+CMD ["python3", "inference_web.py"]
+

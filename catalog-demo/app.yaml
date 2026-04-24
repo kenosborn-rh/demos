@@ -1,0 +1,122 @@
+apiVersion: flightctl.io/v1alpha1
+kind: CatalogItem
+metadata:
+  name: nginx-edge
+  labels:
+    category: networking
+  catalog: edge-apps
+spec:
+  displayName: NGINX Edge Proxy
+  shortDescription: Web server for edge deployments
+  visibility: published
+  provider: NGINX Inc.
+  support: https://www.nginx.com/support/
+
+  category: application
+  type: quadlet
+  artifacts:
+    - type: container
+      uri: quay.io/example/nginx-quadlet
+    - type: qcow2
+      name: Appliance Image
+      uri: quay.io/example/nginx-quadlet-appliance
+
+  versions:
+    - version: "1.26.0"
+      references:
+        container: "1.26.0"
+        qcow2: "1.26.0"
+      channels: [fast]
+      replaces: "1.25.0"
+      # version-specific config overrides defaults.config
+      config:
+        envVars:
+          NGINX_WORKER_PROCESSES: auto
+          NGINX_ERROR_LOG_LEVEL: info
+          NGINX_ENABLE_OTEL: "true"
+      # version-specific JSON Schema documents new parameters
+      configSchema:
+        type: object
+        properties:
+          envVars:
+            type: object
+            properties:
+              NGINX_WORKER_PROCESSES:
+                type: string
+                description: Number of worker processes.
+                default: auto
+              NGINX_ERROR_LOG_LEVEL:
+                type: string
+                enum: [debug, info, notice, warn, error, crit]
+                default: info
+              NGINX_ENABLE_OTEL:
+                type: string
+                description: Enable OpenTelemetry tracing (new in 1.26).
+                enum: ["true", "false"]
+                default: "true"
+            required: [NGINX_WORKER_PROCESSES]
+          volumes:
+            type: array
+            items:
+              type: object
+              required: ["name", "image"]
+              properties: 
+                name:
+                  type: string
+                  description: "Volume name"
+                image:
+                  type: object
+                  description: "Volume image"
+                  required: ["reference"]
+                  properties:
+                    reference:
+                      type: string
+                      minLength: 1
+      readme: |
+        ## NGINX 1.26.0 (Fast Channel)
+        Preview release with OpenTelemetry support.
+
+        ### New Features
+        - Native OpenTelemetry tracing via NGINX_ENABLE_OTEL
+        - Improved HTTP/3 performance
+    - version: "1.25.0"
+      references:
+        qcow2: "1.25.0"
+      channels: [stable, fast]
+      replaces: "1.24.0"
+      readme: |
+        ## NGINX 1.25.0 (Stable)
+        Production-ready release with HTTP/3 support. No container img
+    - version: "1.24.0"
+      references:
+        container: "1.24.0"
+        qcow2: "1.24.0"
+      channels: [stable, fast]
+
+  # item-level defaults (used when version doesn't override)
+  defaults:
+    config:
+      envVars:
+        NGINX_WORKER_PROCESSES: auto
+        NGINX_ERROR_LOG_LEVEL: warn
+      volumes:
+        - name: nginx-html
+          mount:
+            path: /usr/share/nginx/html:ro
+
+    configSchema:
+      type: object
+      properties:
+        envVars:
+          type: object
+          properties:
+            NGINX_WORKER_PROCESSES:
+              type: string
+              description: Number of worker processes. Use "auto" to match CPU cores.
+              default: auto
+            NGINX_ERROR_LOG_LEVEL:
+              type: string
+              description: Error log verbosity.
+              enum: [debug, info, notice, warn, error, crit]
+              default: warn
+          required: [NGINX_WORKER_PROCESSES]

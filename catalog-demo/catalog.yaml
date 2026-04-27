@@ -5,7 +5,7 @@ metadata:
   labels:
     environment: production
 spec:
-  displayName: Monitoring Applications
+  displayName: Edge Monitoring Apps
   shortDescription: Observability stack for edge devices
   icon: https://example.com/monitoring-icon.svg
   provider: Platform Team

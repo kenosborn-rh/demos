@@ -1,0 +1,27 @@
+[Unit]
+Description=Inference(Edge AI train control)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=quay.io/kenosborn/inference-train-demo:v3
+AddDevice=/dev/video0
+AddDevice=/dev/video1
+PublishPort=8080:8080
+Environment=CAM_W=640
+Environment=CAM_H=480
+Environment=DISPLAY_SIZE=800
+Environment=USE_PAPER_GATE=false
+Environment=ARM_THRESHOLD=0.93
+Environment=MARGIN_MIN=0.50
+Environment=STABLE_FRAMES=6
+Environment=COOLDOWN_SEC=3.0
+Environment=MQTT_ENABLED=false
+Environment=MQTT_BROKER=10.20.0.150
+Environment=MQTT_PORT=1883
+Environment=MQTT_TOPIC=train/cmd
+SecurityLabelDisable=true
+User=root
+
+[Install]
+WantedBy=default.target

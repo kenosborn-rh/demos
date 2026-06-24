@@ -1,0 +1,13 @@
+apiVersion: flightctl.io/v1alpha1
+kind: Catalog
+metadata:
+  name: edge-ai-apps
+  labels:
+    environment: production
+spec:
+  displayName: AI Applications
+  shortDescription: AI Inferencing Applications
+  icon: https://example.com/monitoring-icon.svg
+  provider: Platform Team
+  support: https://wiki.acme.com/edge-apps
+  visibility: published

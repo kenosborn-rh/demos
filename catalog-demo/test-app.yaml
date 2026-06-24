@@ -1,0 +1,35 @@
+apiVersion: flightctl.io/v1alpha1
+kind: CatalogItem
+metadata:
+  name: inference-train-demo
+  catalog: test-catalog
+spec:
+  type: quadlet
+  displayName: Inference (Edge AI Train Control)
+  shortDescription: Edge AI inference app for train demo with camera input
+  artifacts:
+    - type: container
+      uri: quay.io/kenosborn/inference-app:v1
+  versions:
+    - version: "1.0.0"
+      references:
+        container: "v1"
+      channels:
+        - stable
+  # add this if you want to enable changing env vars
+  defaults:
+    config:
+      envVars:
+        CAM_W: "640"
+        CAM_H: "480"
+        DISPLAY_SIZE: "800"
+        USE_PAPER_GATE: "false"
+        ARM_THRESHOLD: "0.93"
+        MARGIN_MIN: "0.50"
+        STABLE_FRAMES: "6"
+        COOLDOWN_SEC: "3.0"
+        MQTT_ENABLED: "false"
+        MQTT_BROKER: "10.20.0.150"
+        MQTT_PORT: "1883"
+        MQTT_TOPIC: "train/cmd"
+
